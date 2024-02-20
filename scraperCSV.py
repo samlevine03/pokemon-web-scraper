@@ -3,6 +3,7 @@
 Scrapes Serebii.net for Pokémon statistics.
 """
 import argparse
+import time
 import bs4
 import json
 import logging
@@ -65,6 +66,9 @@ def scrape_pokemon(first_id: int, last_id: int, args):
         else:
             logging.info('Scraped %s %s', data['number'], data['name'])
 
+        # wait for 1 second before scraping the next Pokémon
+        time.sleep(0.3)
+
     if args.save:
         logging.info('Saving to %s', OUTPUT_FILE)
         save_to_json(data_list)
@@ -77,10 +81,13 @@ def extract_statistics(poke_id: int) -> object:
     Scrapes the Serebii.net with a given Pokémon ID.
     """
     if args.name:
+        raise NotImplementedError('Name scraping not yet implemented for Sword and Shield. Use the ID instead.')
         url = 'https://serebii.net/pokedex-sv/{}'.format(args.name.lower())
         print(url)
     else:
-        url = 'https://serebii.net/pokedex-sv/{}.shtml'.format(str(poke_id).zfill(3))
+        # we're not using Scarlet and Violet since the Pokedex is not complete!
+        # url = 'https://serebii.net/pokedex-sv/{}.shtml'.format(str(poke_id).zfill(3))
+        url = 'https://serebii.net/pokedex-swsh/{}.shtml'.format(str(poke_id).zfill(3))
     data = requests.get(url)
     soup = bs4.BeautifulSoup(data.text, 'html.parser')
 
@@ -90,6 +97,9 @@ def extract_statistics(poke_id: int) -> object:
         type_info = all_divs[1].findAll('td', {'class': 'cen'})[0]        
 
         name = center_panel_info[1].text
+
+        print(name)
+
         japanese_name = center_panel_info[2].text
         match = re.search(r'Japan: ([\x00-\x7F]+)([^\x00-\x7F]+)', japanese_name)
         if match:
@@ -143,20 +153,49 @@ def extract_statistics(poke_id: int) -> object:
             if effort_values:
                 break
     except Exception:
-        logging.error('There was an error trying to identify HTML elements on the webpage. URL: %s', url)
+        # don't show any errors, and just return
+        extracted_pokemon = {
+            "name": None,
+            "number": '#{}'.format(str(poke_id).zfill(3)),
+        }
+        return extracted_pokemon
+        # logging.error('There was an error trying to identify HTML elements on the webpage. URL: %s', url)
         raise
+
+    height_in, height_m = height
+    if "/" in height_in:
+        height_in = height_in.split("/")[0].strip()
+        height_m = height_m.split("/")[0].strip()
+    # convert the height from X'Y" to just inches
+    ft, inch = height_in.split("'")
+    inch = inch.replace('"', '')
+    height_in = int(ft) * 12 + int(inch)
+    height_m = float(height_m.replace('m', ''))
+
+    weight_lbs, weight_kg = weight
+    if "/" in weight_lbs:
+        weight_lbs = weight_lbs.split("/")[0].strip()
+        weight_kg = weight_kg.split("/")[0].strip()
+    # remove lbs and kg from the strings
+    weight_lbs = float(weight_lbs.replace('lbs', ''))
+    weight_kg = float(weight_kg.replace('kg', ''))
 
     extracted_pokemon = {
         "name": name,
         "japanese_name_romanji": japanese_name_romanji,
         "japanese_name_kana": japanese_name_kana,
         "number": '#{}'.format(str(poke_id).zfill(3)),
-        "gender ratio": (male, female), 
+        "prop. male": int(male) if male else None,
+        "prop. female": int(female) if female else None,
         "classification": center_panel_info[5].text,
         "type1": type1,
         "type2": type2,
-        "height": height,
-        "weight": weight,
+        # "height": height,
+        "height_in": height_in,
+        "height_m": height_m,
+        # "weight": weight,
+        "weight_lbs": weight_lbs,
+        "weight_kg": weight_kg,
         "hit_points": int(base_stats_td[0].text),
         "attack": int(base_stats_td[1].text),
         "defense": int(base_stats_td[2].text),
@@ -164,7 +203,25 @@ def extract_statistics(poke_id: int) -> object:
         "sp_def": int(base_stats_td[4].text),
         "speed": int(base_stats_td[5].text),
         "effort_values": effort_values,
-        "weaknesses": weakness_values
+        # "weaknesses": weakness_values
+        "wk_normal": float(weakness_values['Normal']),
+        "wk_fire": float(weakness_values['Fire']),
+        "wk_water": float(weakness_values['Water']),
+        "wk_electric": float(weakness_values['Electric']),
+        "wk_grass": float(weakness_values['Grass']),
+        "wk_ice": float(weakness_values['Ice']),
+        "wk_fighting": float(weakness_values['Fighting']),
+        "wk_poison": float(weakness_values['Poison']),
+        "wk_ground": float(weakness_values['Ground']),
+        "wk_flying": float(weakness_values['Flying']),
+        "wk_psychic": float(weakness_values['Psychic']),
+        "wk_bug": float(weakness_values['Bug']),
+        "wk_rock": float(weakness_values['Rock']),
+        "wk_ghost": float(weakness_values['Ghost']),
+        "wk_dragon": float(weakness_values['Dragon']),
+        "wk_dark": float(weakness_values['Dark']),
+        "wk_steel": float(weakness_values['Steel']),
+        "wk_fairy": float(weakness_values['Fairy'])
     }
 
     return extracted_pokemon
@@ -180,9 +237,9 @@ def display_formatted(poke_object):
     print(f"Classification\t {poke_object['classification']}")
     print(f"Type 1\t\t {poke_object['type1']}")
     print(f"Type 2\t\t {poke_object['type2']}")
-    print(f"Gender Ratio\t {poke_object['gender ratio'][0]}% male  {poke_object['gender ratio'][1]}% female")
-    print(f"Height\t\t {' '.join(poke_object['height'])}")
-    print(f"Weight\t\t {' '.join(poke_object['weight'])}")
+    # print(f"Gender Ratio\t {poke_object['gender ratio'][0]}% male  {poke_object['gender ratio'][1]}% female")
+    # print(f"Height\t\t {' '.join(poke_object['height'])}")
+    # print(f"Weight\t\t {' '.join(poke_object['weight'])}")
     print(f"HP\t\t {poke_object['hit_points']}")
     print(f"Attack\t\t {poke_object['attack']}")
     print(f"Defense\t\t {poke_object['defense']}")
@@ -190,11 +247,11 @@ def display_formatted(poke_object):
     print(f"Sp.Def\t\t {poke_object['sp_def']}")
     print(f"Speed\t\t {poke_object['speed']}")
     print(f"Effort Values\t {poke_object['effort_values']}")
-    for key, value in poke_object['weaknesses'].items():
-        if key == 'Electric' or key == 'Fighting':
-            print(f"Weak to {key} {value}")
-        else:
-            print(f"Weak to {key}\t {value}")
+    # for key, value in poke_object['weaknesses'].items():
+    #     if key == 'Electric' or key == 'Fighting':
+    #         print(f"Weak to {key} {value}")
+    #     else:
+    #         print(f"Weak to {key}\t {value}")
     print('-' * 20)
 
 
@@ -210,9 +267,9 @@ def validate_input(first_id_input: int, last_id_input: int):
     """
     Check if the user-supplied input is valid.
     """
-    if first_id_input >= 906 or last_id_input >= 906:
-        logging.error('Error: This Pokémon is not yet supported!')
-        exit()
+    # if first_id_input >= 906 or last_id_input >= 906:
+    #     logging.error('Error: This Pokémon is not yet supported!')
+    #     exit()
     if last_id_input < first_id_input:
         last_id_input = first_id_input
     return first_id_input, last_id_input
